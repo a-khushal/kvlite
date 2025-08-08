@@ -1,15 +1,15 @@
 # KVLite
 
-A simple in-memory key-value store with persistence, implemented in Go.
+A minimal, high-performance key-value store with persistence and Pub/Sub capabilities, implemented in Go.
 
 ## Features
 
-- Thread-safe operations with read-write mutex
-- Basic key-value operations: Set, Get, Delete
-- Simple TCP server interface
-- Concurrent client handling
-- Data persistence to disk (data.json)
-- Atomic writes using temporary files to prevent data corruption
+- **Thread-safe Operations**: Concurrent access handling with read-write mutex
+- **Core Commands**: SET, GET, DEL for key-value operations
+- **TCP Server**: Simple text-based protocol over TCP
+- **Concurrency**: Handles multiple clients simultaneously using goroutines
+- **Data Persistence**: Automatic saving to disk with atomic writes
+- **Pub/Sub**: Basic publish-subscribe pattern implementation
 
 ## Usage
 
@@ -45,6 +45,12 @@ OK
 
 ## Commands
 
+### Key-Value Operations
 - `SET <key> <value>` - Store a key-value pair
 - `GET <key>` - Retrieve a value by key
 - `DEL <key>` - Delete a key-value pair
+
+### Pub/Sub Operations
+- `SUBSCRIBE <channel>` - Subscribe to a channel
+- `PUBLISH <channel> <message>` - Publish a message to a channel
+- `UNSUBSCRIBE <channel>` - Unsubscribe from a channel
