@@ -5,29 +5,29 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"sync"
 )
 
 type KVStore struct {
-	mu   sync.RWMutex      // read write mutex
-	data map[string]string // actual in-memory db
+	mu   sync.RWMutex
+	data map[string]string
 }
 
-// Constructor function
 func NewKVStore() *KVStore {
 	return &KVStore{data: make(map[string]string)}
 }
 
 func (kv *KVStore) Set(key, value string) {
-	kv.mu.Lock() // exclusive lock for writing
+	kv.mu.Lock()
 	kv.data[key] = value
 	kv.mu.Unlock()
+	_ = kv.SaveToFile("data.json")
 }
 
-// RWMutex to let concurrent reads to happen
 func (kv *KVStore) Get(key string) (string, bool) {
-	kv.mu.RLock() // read only lock, shared lock for reading
+	kv.mu.RLock()
 	v, ok := kv.data[key]
 	kv.mu.RUnlock()
 	return v, ok
@@ -35,15 +35,15 @@ func (kv *KVStore) Get(key string) (string, bool) {
 
 func (kv *KVStore) Del(key string) bool {
 	kv.mu.Lock()
-	defer kv.mu.Unlock() // schedule Unlock no matter where it returns
-
 	_, exists := kv.data[key]
 	if exists {
 		delete(kv.data, key)
-		return true
 	}
-
-	return false
+	kv.mu.Unlock()
+	if exists {
+		_ = kv.SaveToFile("data.json")
+	}
+	return exists
 }
 
 func handleConnection(conn net.Conn, store *KVStore) {
@@ -67,7 +67,6 @@ func handleConnection(conn net.Conn, store *KVStore) {
 				fmt.Fprintln(conn, "> Err usage: SET key value")
 				continue
 			}
-
 			store.Set(parts[1], parts[2])
 			fmt.Fprintln(conn, "> OK")
 
@@ -76,7 +75,6 @@ func handleConnection(conn net.Conn, store *KVStore) {
 				fmt.Fprintln(conn, "> Err usage: GET key")
 				continue
 			}
-
 			value, exists := store.Get(parts[1])
 			if exists {
 				fmt.Fprintln(conn, "> ", value)
@@ -120,6 +118,9 @@ func main() {
 	log.Println("KVLite listening on :4000")
 
 	store := NewKVStore()
+	if err := store.LoadFromFile("data.json"); err != nil && !os.IsNotExist(err) {
+		log.Fatalf("failed to load data file: %v", err)
+	}
 
 	for {
 		conn, err := listener.Accept()
