@@ -10,13 +10,26 @@ import (
 	"sync"
 )
 
+// `chan` is short for channel: a built-in Go type used for communication between goroutines.
+// A channel lets one goroutine send data to another safely, without extra locks.
+// Publisher’s goroutine is sending messages to the channel, and the subscriber’s writer goroutine(the go func() { for msg := range client.send { … } }()), [anonymous function written below] is reading from the channel.
+type Client struct {
+	conn net.Conn
+	send chan string
+}
+
 type KVStore struct {
-	mu   sync.RWMutex
-	data map[string]string
+	mu          sync.RWMutex
+	data        map[string]string
+	subscribers map[string]map[*Client]bool
+	subsMu      sync.RWMutex
 }
 
 func NewKVStore() *KVStore {
-	return &KVStore{data: make(map[string]string)}
+	return &KVStore{
+		data:        make(map[string]string),
+		subscribers: make(map[string]map[*Client]bool),
+	}
 }
 
 func (kv *KVStore) Set(key, value string) {
@@ -47,9 +60,24 @@ func (kv *KVStore) Del(key string) bool {
 }
 
 func handleConnection(conn net.Conn, store *KVStore) {
-	defer conn.Close()
+	client := &Client{
+		conn: conn,
+		send: make(chan string, 10), // buffered channel for outgoing messages
+	}
+
+	// a goroutine whose sole job is to send messages from the client's buffer (client.send) out to the TCP connection. an anonymous function
+	go func() {
+		for msg := range client.send {
+			fmt.Fprintln(client.conn, msg)
+		}
+	}()
+
 	addr := conn.RemoteAddr().String()
 	log.Printf("client connected: %s\n", addr)
+	defer func() {
+		conn.Close()
+		log.Printf("client disconnected: %s\n", addr)
+	}()
 
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
@@ -92,6 +120,30 @@ func handleConnection(conn net.Conn, store *KVStore) {
 			} else {
 				fmt.Fprintln(conn, "> 0")
 			}
+
+		case "SUBSCRIBE":
+			if len(parts) < 2 {
+				fmt.Fprintln(conn, "> Err usage: SUBSCRIBE channel")
+				continue
+			}
+			store.Subscribe(parts[1], client)
+			fmt.Fprintln(conn, "> Subscribed to", parts[1])
+
+		case "UNSUBSCRIBE":
+			if len(parts) < 2 {
+				fmt.Fprintln(conn, "> Err usage: UNSUBSCRIBE channel")
+				continue
+			}
+			store.Unsubscribe(parts[1], client)
+			fmt.Fprintln(conn, "> Unsubscribed from", parts[1])
+
+		case "PUBLISH":
+			if len(parts) < 3 {
+				fmt.Fprintln(conn, "> Err usage: PUBLISH channel message")
+				continue
+			}
+			store.Publish(parts[1], parts[2])
+			fmt.Fprintln(conn, "> Published to", parts[1])
 
 		case "QUIT", "EXIT":
 			fmt.Fprintln(conn, "> BYE")
