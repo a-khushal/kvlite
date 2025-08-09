@@ -16,7 +16,7 @@ A minimal, high-performance key-value store with persistence and Pub/Sub capabil
 
 Build the server:
 ```bash
-go build -o kvlite main.go persistence.go
+go build -o kvlite main.go persistence.go pubsub.go
 ```
 
 Start the server:
